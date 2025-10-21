@@ -1,5 +1,6 @@
 import { Navbar, Welcome, Footer, Services, Transaction } from "./components";
-import './index.css' 
+import './index.css'
+
 const App = () => (
   <div className="min-h-screen">
     <div className="gradient-bg-welcome">
