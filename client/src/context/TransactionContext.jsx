@@ -7,10 +7,9 @@ export const TransactionContext = React.createContext();
 
 const { ethereum } = window;
 
-const createEthereumContract = () => {
-  // FIXED: Changed from ethers.providers.Web3Provider to ethers.BrowserProvider for ethers v6
+const createEthereumContract = async () => {
   const provider = new ethers.BrowserProvider(ethereum);
-  const signer = provider.getSigner();
+  const signer = await provider.getSigner();
   const transactionsContract = new ethers.Contract(contractAddress, contractABI, signer);
 
   return transactionsContract;
@@ -30,9 +29,15 @@ export const TransactionsProvider = ({ children }) => {
   const getAllTransactions = async () => {
     try {
       if (ethereum) {
-        const transactionsContract = createEthereumContract();
+        console.log(" Fetching transactions...");
+        console.log(" Contract Address:", contractAddress);
+        console.log(" Current Network:", await ethereum.request({ method: 'eth_chainId' }));
+        
+        const transactionsContract = await createEthereumContract();
+        console.log(" Contract created:", transactionsContract);
 
         const availableTransactions = await transactionsContract.getAllTransactions();
+        console.log(" Raw transactions:", availableTransactions);
 
         const structuredTransactions = availableTransactions.map((transaction) => ({
           addressTo: transaction.receiver,
@@ -40,18 +45,18 @@ export const TransactionsProvider = ({ children }) => {
           timestamp: new Date(Number(transaction.timestamp) * 1000).toLocaleString(),
           message: transaction.message,
           keyword: transaction.keyword,
-          // FIXED: Changed from parseInt(transaction.amount._hex) to work with ethers v6
           amount: Number(ethers.formatEther(transaction.amount))
         }));
 
-        console.log(structuredTransactions);
+        console.log("✅ Structured transactions:", structuredTransactions);
 
         setTransactions(structuredTransactions);
       } else {
-        console.log("Ethereum is not present");
+        console.log("❌ Ethereum is not present");
       }
     } catch (error) {
-      console.log(error);
+      console.log(" Error in getAllTransactions:", error);
+      console.log(" Error message:", error.message);
     }
   };
 
@@ -60,11 +65,11 @@ export const TransactionsProvider = ({ children }) => {
       if (!ethereum) return alert("Please install MetaMask.");
 
       const accounts = await ethereum.request({ method: "eth_accounts" });
+      console.log(" Accounts found:", accounts);
 
       if (accounts.length) {
         setCurrentAccount(accounts[0]);
-
-        getAllTransactions();
+        await getAllTransactions();
       } else {
         console.log("No accounts found");
       }
@@ -76,18 +81,15 @@ export const TransactionsProvider = ({ children }) => {
   const checkIfTransactionsExists = async () => {
     try {
       if (ethereum) {
-        const transactionsContract = createEthereumContract();
+        const transactionsContract = await createEthereumContract();
         const currentTransactionCount = await transactionsContract.getTransactionCount();
 
-        // Store in state and localStorage
         const count = Number(currentTransactionCount);
         setTransactionCount(count);
         localStorage.setItem("transactionCount", count);
       }
     } catch (error) {
-      console.log(error);
-
-      throw new Error("No ethereum object");
+      console.log(" Error checking transactions:", error);
     }
   };
 
@@ -101,7 +103,6 @@ export const TransactionsProvider = ({ children }) => {
       window.location.reload();
     } catch (error) {
       console.log(error);
-
       throw new Error("No ethereum object");
     }
   };
@@ -110,8 +111,7 @@ export const TransactionsProvider = ({ children }) => {
     try {
       if (ethereum) {
         const { addressTo, amount, keyword, message } = formData;
-        const transactionsContract = createEthereumContract();
-        // FIXED: Changed from ethers.utils.parseEther to ethers.parseEther for ethers v6
+        const transactionsContract = await createEthereumContract();
         const parsedAmount = ethers.parseEther(amount);
 
         await ethereum.request({
@@ -120,8 +120,7 @@ export const TransactionsProvider = ({ children }) => {
             from: currentAccount,
             to: addressTo,
             gas: "0x5208",
-            // FIXED: parsedAmount is now a BigInt, convert to hex string
-            value: parsedAmount.toString(16),
+            value: "0x" + parsedAmount.toString(16),
           }],
         });
 
@@ -143,16 +142,16 @@ export const TransactionsProvider = ({ children }) => {
         console.log("No ethereum object");
       }
     } catch (error) {
-      console.log(error);
-
-      throw new Error("No ethereum object");
+      console.log("🚨 Error sending transaction:", error);
+      setIsLoading(false);
+      throw error;
     }
   };
 
   useEffect(() => {
     checkIfWalletIsConnect();
     checkIfTransactionsExists();
-  }, [transactionCount]);
+  }, []);
 
   return (
     <TransactionContext.Provider
